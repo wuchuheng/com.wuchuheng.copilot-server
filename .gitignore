@@ -1,3 +1,4 @@
 .idea/
 bin/
 src/tmp/
+.DS_Store
