@@ -20,3 +20,7 @@ input NotificationInput {
 type Mutation {
   createNotification(input: NotificationInput!): Notification!
 }
+
+type Subscription {
+  notification: Notification!
+}

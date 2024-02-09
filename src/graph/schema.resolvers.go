@@ -7,6 +7,9 @@ package graph
 import (
 	"com.wuchuheng.server/src/graph/model"
 	"context"
+	"fmt"
+	"log"
+	"sync"
 )
 
 // CreateNotification is the resolver for the createNotification field.
@@ -24,6 +27,14 @@ func (r *mutationResolver) CreateNotification(ctx context.Context, input model.N
 	// append the new notification to the list of notifications.
 	notifications = append(notifications, notification)
 
+	// notify all the notification channels.
+	go func() {
+		err := notificationsSubscriptions.notify(notification)
+		if err != nil {
+			fmt.Printf("Error notifying notification channels: %v\n", err)
+		}
+	}()
+
 	// return the new notification.
 	return notification, nil
 }
@@ -34,14 +45,41 @@ func (r *queryResolver) Notifications(ctx context.Context) ([]*model.Notificatio
 	return notifications, nil
 }
 
+// Notification is the resolver for the notification field.
+func (r *subscriptionResolver) Notification(ctx context.Context) (<-chan *model.Notification, error) {
+	// create a new notification channel.
+	notificationChannel := make(chan *model.Notification, 1)
+	log.Default().Printf("notificationChannel: %v\n", notificationChannel)
+
+	// add the new notification channel to the list of channels.
+	chanelId, err := notificationsSubscriptions.add(notificationChannel)
+	if err == nil {
+		go func() {
+			// if the context is done, remove the notification channel from the list of channels.
+			<-ctx.Done()
+			err := notificationsSubscriptions.remove(chanelId)
+			if err != nil {
+				fmt.Printf("Error removing notification channel: %v\n", err)
+			}
+		}()
+		return notificationChannel, nil
+	} else {
+		return nil, err
+	}
+}
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// Subscription returns SubscriptionResolver implementation.
+func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
+
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }
 
 // !!! WARNING !!!
 // The code below was going to be deleted when updating resolvers. It has been copied here so you have
@@ -49,5 +87,46 @@ type queryResolver struct{ *Resolver }
 //   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
 //     it when you're done.
 //   - You have helper methods in this file. Move them out to keep these resolver files clean.
+func (r *subscriptionResolver) NotificationCreated(ctx context.Context) (<-chan *model.Notification, error) {
+	panic(fmt.Errorf("not implemented: NotificationCreated - notificationCreated"))
+}
+
 var nextNotificationID = 1
 var notifications = []*model.Notification{}
+var notificationsSubscriptions = &NotificationsSubscriptions{
+	channels: make(map[int]chan *model.Notification),
+	mu:       &sync.Mutex{},
+	nextId:   1,
+}
+
+type NotificationsSubscriptions struct {
+	channels map[int]chan *model.Notification
+	mu       *sync.Mutex
+	nextId   int
+}
+
+func (n *NotificationsSubscriptions) add(notificationChanel chan *model.Notification) (int, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	id := n.nextId
+	n.channels[id] = notificationChanel
+	n.nextId++
+
+	return id, nil
+}
+func (n *NotificationsSubscriptions) remove(id int) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	delete(n.channels, id)
+
+	return nil
+}
+func (n *NotificationsSubscriptions) notify(notification *model.Notification) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, ch := range n.channels {
+		ch <- notification
+	}
+
+	return nil
+}

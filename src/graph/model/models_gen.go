@@ -18,3 +18,6 @@ type NotificationInput struct {
 
 type Query struct {
 }
+
+type Subscription struct {
+}
