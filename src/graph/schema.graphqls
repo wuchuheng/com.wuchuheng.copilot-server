@@ -2,27 +2,21 @@
 #
 # https://gqlgen.com/getting-started/
 
-type Todo {
+type Notification {
   id: ID!
-  text: String!
-  done: Boolean!
-  user: User!
-}
-
-type User {
-  id: ID!
-  name: String!
+  title: String!
+  body: String!
 }
 
 type Query {
-  todos: [Todo!]!
+  notifications: [Notification!]!
 }
 
-input NewTodo {
-  text: String!
-  userId: String!
+input NotificationInput {
+  title: String!
+  body: String!
 }
 
 type Mutation {
-  createTodo(input: NewTodo!): Todo!
+  createNotification(input: NotificationInput!): Notification!
 }
